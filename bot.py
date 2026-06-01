@@ -435,25 +435,17 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # Зберігаємо відповідь AI
     db.add_message(user_id, "model", clean_text)
 
-    # Паралельно генеруємо зображення
-    img_bytes = None
+    # Спочатку відправляємо текст — не чекаємо на зображення
+    await update.message.reply_text(clean_text)
+
+    # Потім генеруємо зображення у фоні й відправляємо окремо
     if scene:
         char = db.get_character(user_id)
         img_prompt = build_image_prompt(char, scene)
         await update.effective_chat.send_action(ChatAction.UPLOAD_PHOTO)
         img_bytes = await generate_image_horde(img_prompt)
-
-    # Відправляємо відповідь
-    if img_bytes:
-        await update.message.reply_photo(
-            photo=img_bytes,
-            caption=clean_text[:1024],  # caption обмежений 1024 символами
-        )
-        # Якщо текст довший — відправляємо окремо
-        if len(clean_text) > 1024:
-            await update.message.reply_text(clean_text[1024:])
-    else:
-        await update.message.reply_text(clean_text)
+        if img_bytes:
+            await update.message.reply_photo(photo=img_bytes)
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  Keep-alive HTTP сервер (async, для безкоштовного Render Web Service)
