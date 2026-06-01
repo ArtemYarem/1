@@ -13,6 +13,7 @@ import os
 import json
 import time
 import aiohttp
+import aiohttp.web
 import base64
 import re
 
@@ -486,6 +487,7 @@ async def run_bot():
         },
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
         allow_reentry=True,
+        per_message=False,
     )
 
     app.add_handler(conv)
