@@ -15,8 +15,6 @@ import time
 import aiohttp
 import base64
 import re
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -448,31 +446,30 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(clean_text)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Keep-alive HTTP сервер (для безкоштовного Render Web Service)
+#  Keep-alive HTTP сервер (async, для безкоштовного Render Web Service)
 # ══════════════════════════════════════════════════════════════════════════════
 
-class _PingHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, *args):
-        pass  # мовчимо, щоб не смітити в логах
+async def keepalive_handler(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    return aiohttp.web.Response(text="OK")
 
-def start_keepalive_server():
+async def run_keepalive():
     port = int(os.getenv("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), _PingHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    web_app = aiohttp.web.Application()
+    web_app.router.add_get("/", keepalive_handler)
+    web_app.router.add_get("/health", keepalive_handler)
+    runner = aiohttp.web.AppRunner(web_app)
+    await runner.setup()
+    site = aiohttp.web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
     logger.info("Keep-alive сервер запущено на порту %s", port)
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  Запуск бота
+# ══════════════════════════════════════════════════════════════════════════════
 
-
-def main():
-    start_keepalive_server()  # запускаємо HTTP у фоновому потоці
+async def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # ConversationHandler — онбординг та /setup
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", cmd_start),
@@ -480,12 +477,12 @@ def main():
             CommandHandler("mykey", cmd_mykey),
         ],
         states={
-            AWAIT_API_KEY:  [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_api_key)],
-            SETUP_NAME:     [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
-            SETUP_APPEARANCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_appearance)],
+            AWAIT_API_KEY:     [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_api_key)],
+            SETUP_NAME:        [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
+            SETUP_APPEARANCE:  [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_appearance)],
             SETUP_PERSONALITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_personality)],
-            SETUP_SPEECH:   [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_speech)],
-            SETUP_CONFIRM:  [CallbackQueryHandler(setup_confirm_callback, pattern="^setup_")],
+            SETUP_SPEECH:      [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_speech)],
+            SETUP_CONFIRM:     [CallbackQueryHandler(setup_confirm_callback, pattern="^setup_")],
         },
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
         allow_reentry=True,
@@ -496,8 +493,19 @@ def main():
     app.add_handler(CommandHandler("imagine", cmd_imagine))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    await app.initialize()
+    await app.updater.start_polling(drop_pending_updates=True)
+    await app.start()
     logger.info("Бот запущено ✅")
-    app.run_polling(drop_pending_updates=True)
+
+    # Тримаємо бота живим
+    await asyncio.Event().wait()
+
+async def main():
+    await asyncio.gather(
+        run_keepalive(),
+        run_bot(),
+    )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
