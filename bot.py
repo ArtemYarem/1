@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 ) = range(6)
 
 # ── Конфігурація ───────────────────────────────────────────────────────────
-BOT_TOKEN = 8936726061:AAEBV5Tj5cnVZV6nkkjyJgZOAMc3PyJGGbk
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 HORDE_API_KEY = os.getenv("HORDE_API_KEY", "0000000000")  # анонімний ключ
 
 HORDE_API_BASE = "https://stablehorde.net/api/v2"
