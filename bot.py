@@ -248,6 +248,7 @@ async def receive_api_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return AWAIT_API_KEY
 
     db.set_api_key(update.effective_user.id, key)
+    ctx.user_data["setup"] = {}  # ← ФІКС: ініціалізуємо перед переходом до SETUP_NAME
     await update.message.reply_text(
         "✅ Ключ збережено!\n\n"
         "Тепер давай налаштуємо твого персонажа.\n"
@@ -260,14 +261,16 @@ async def receive_api_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def cmd_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    ctx.user_data["setup"] = {}
     await update.message.reply_text(
         "⚙️ Налаштування персонажа.\n\n"
         "👤 Як звати персонажа? (наприклад: Аяне, Рен, Мікото)"
     )
-    ctx.user_data["setup"] = {}
     return SETUP_NAME
 
 async def setup_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if "setup" not in ctx.user_data:
+        ctx.user_data["setup"] = {}
     ctx.user_data["setup"]["name"] = update.message.text.strip()
     await update.message.reply_text(
         "🎨 Опиши *зовнішність* персонажа.\n"
@@ -278,6 +281,8 @@ async def setup_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return SETUP_APPEARANCE
 
 async def setup_appearance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if "setup" not in ctx.user_data:
+        ctx.user_data["setup"] = {}
     ctx.user_data["setup"]["appearance"] = update.message.text.strip()
     await update.message.reply_text(
         "💬 Опиши *характер* персонажа.\n"
@@ -287,6 +292,8 @@ async def setup_appearance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return SETUP_PERSONALITY
 
 async def setup_personality(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if "setup" not in ctx.user_data:
+        ctx.user_data["setup"] = {}
     ctx.user_data["setup"]["personality"] = update.message.text.strip()
     await update.message.reply_text(
         "🗣 Опиши *стиль мовлення* персонажа.\n"
@@ -296,6 +303,8 @@ async def setup_personality(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return SETUP_SPEECH
 
 async def setup_speech(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if "setup" not in ctx.user_data:
+        ctx.user_data["setup"] = {}
     ctx.user_data["setup"]["speech_style"] = update.message.text.strip()
     s = ctx.user_data["setup"]
     await update.message.reply_text(
