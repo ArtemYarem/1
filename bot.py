@@ -61,7 +61,7 @@ IMAGE_HEIGHT   = 512
 MAX_HISTORY    = 30   # повідомлень у контексті
 MAX_WAIT_SEC   = 180  # секунд очікування Horde
 
-DB_PATH = os.getenv("DB_PATH", "/data/bot_data.db")
+DB_PATH = os.getenv("DB_PATH", "/tmp/bot_data.db")
 db = Database(DB_PATH)
 
 # ══════════════════════════════════════════════════════════════════════════════
