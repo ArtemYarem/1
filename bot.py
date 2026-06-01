@@ -174,6 +174,7 @@ async def generate_image_horde(prompt: str) -> bytes | None:
 
 async def gemini_reply(user_id: int, user_text: str) -> str:
     """Надсилає повідомлення до Gemini з повною історією."""
+    logger.info("[gemini] start user=%s", user_id)
     api_key = db.get_api_key(user_id)
     if not api_key:
         return "__no_key__"
@@ -183,6 +184,7 @@ async def gemini_reply(user_id: int, user_text: str) -> str:
         return "__no_char__"
 
     history = db.get_history(user_id, limit=MAX_HISTORY)
+    logger.info("[gemini] history=%s messages", len(history))
 
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(
@@ -190,14 +192,19 @@ async def gemini_reply(user_id: int, user_text: str) -> str:
         system_instruction=build_system_prompt(char),
     )
 
-    # Конвертуємо історію у формат Gemini
     gemini_history = []
     for role, content in history:
         gemini_history.append({"role": role, "parts": [content]})
 
     chat = model.start_chat(history=gemini_history)
-    response = await asyncio.to_thread(chat.send_message, user_text)
-    return response.text
+    logger.info("[gemini] sending request...")
+    try:
+        response = await asyncio.to_thread(chat.send_message, user_text)
+        logger.info("[gemini] got response len=%s", len(response.text))
+        return response.text
+    except Exception as e:
+        logger.exception("[gemini] error: %s", e)
+        return f"__error__: {e}"
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  /start — онбординг
@@ -396,6 +403,16 @@ async def cmd_imagine(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 #  Основний обробник повідомлень
 # ══════════════════════════════════════════════════════════════════════════════
 
+async def send_image_bg(bot, chat_id: int, reply_to: int, prompt: str):
+    """Генерує зображення у фоні та відправляє окремим повідомленням."""
+    try:
+        img_bytes = await generate_image_horde(prompt)
+        if img_bytes:
+            await bot.send_photo(chat_id=chat_id, photo=img_bytes, reply_to_message_id=reply_to)
+    except Exception as e:
+        logger.warning("send_image_bg failed: %s", e)
+
+
 async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id   = update.effective_user.id
     user_text = update.message.text.strip()
@@ -428,6 +445,9 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if ai_text == "__no_char__":
         await update.message.reply_text("⚠️ Персонаж не налаштований. Введи /setup.")
         return
+    if ai_text.startswith("__error__"):
+        await update.message.reply_text(f"⚠️ Помилка Gemini: {ai_text}")
+        return
 
     # Витягуємо сцену з відповіді
     clean_text, scene = extract_scene(ai_text)
@@ -435,17 +455,16 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # Зберігаємо відповідь AI
     db.add_message(user_id, "model", clean_text)
 
-    # Спочатку відправляємо текст — не чекаємо на зображення
-    await update.message.reply_text(clean_text)
+    # Відправляємо текст одразу
+    sent = await update.message.reply_text(clean_text)
 
-    # Потім генеруємо зображення у фоні й відправляємо окремо
+    # Запускаємо генерацію зображення у фоні — handler не чекає
     if scene:
         char = db.get_character(user_id)
         img_prompt = build_image_prompt(char, scene)
-        await update.effective_chat.send_action(ChatAction.UPLOAD_PHOTO)
-        img_bytes = await generate_image_horde(img_prompt)
-        if img_bytes:
-            await update.message.reply_photo(photo=img_bytes)
+        asyncio.create_task(
+            send_image_bg(ctx.bot, update.effective_chat.id, sent.message_id, img_prompt)
+        )
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  Keep-alive HTTP сервер (async, для безкоштовного Render Web Service)
