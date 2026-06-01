@@ -9,6 +9,8 @@ services:
         sync: false
       - key: HORDE_API_KEY
         value: "0000000000"
+      - key: DB_PATH
+        value: /tmp/bot_data.db
       - key: DATABASE_URL
         fromDatabase:
           name: tg-bot-db
